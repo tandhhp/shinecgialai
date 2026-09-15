@@ -1,0 +1,159 @@
+"use client";
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { EditorJSListData, EditorJSParagraphData } from "@/typings/editorjs";
+import { faFacebook, faTwitter } from "@fortawesome/free-brands-svg-icons";
+import { faBookmark, faCheck, faHeart, faPause, faPlayCircle, faStop, faTags, faVolumeUp } from "@fortawesome/free-solid-svg-icons";
+import { ArticleDetail } from "@/services/article";
+
+interface ArticleActionsProps {
+  article: ArticleDetail;
+}
+
+const ArticleActions: React.FC<ArticleActionsProps> = ({ article }) => {
+  const [loadingTags, setLoadingTags] = useState(false);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [favorited, setFavorited] = useState(false);
+  const [isReading, setIsReading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const currentUrl = typeof window !== "undefined" ? window.location.href : "";
+  const storageBookmarkKey = "bookmarks:articles";
+  const storageFavoriteKey = "favorites:articles";
+  const bookmarkId = article.normalizedName ?? article.id;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const bookmarks = JSON.parse(localStorage.getItem(storageBookmarkKey) || "[]");
+    const favorites = JSON.parse(localStorage.getItem(storageFavoriteKey) || "[]");
+    setBookmarked(bookmarks.includes(bookmarkId));
+    setFavorited(favorites.includes(bookmarkId));
+  }, [bookmarkId]);
+
+  const toggleInStorage = (key: string, id: string, setter: (v: boolean) => void) => {
+    if (typeof window === "undefined") return;
+    const items: string[] = JSON.parse(localStorage.getItem(key) || "[]");
+    const exists = items.includes(id);
+    const next = exists ? items.filter(x => x !== id) : [...items, id];
+    localStorage.setItem(key, JSON.stringify(next));
+    setter(!exists);
+  };
+
+  const handleBookmark = () => toggleInStorage(storageBookmarkKey, bookmarkId, setBookmarked);
+  const handleFavorite = () => toggleInStorage(storageFavoriteKey, bookmarkId, setFavorited);
+
+  const shareFacebook = () => {
+    if (typeof window === "undefined") return;
+    const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(currentUrl)}&quote=${encodeURIComponent(article.name)}`;
+    window.open(url, "_blank", "noopener,noreferrer,width=600,height=500");
+  };
+
+  const shareX = () => {
+    if (typeof window === "undefined") return;
+    const url = `https://twitter.com/intent/tweet?url=${encodeURIComponent(currentUrl)}&text=${encodeURIComponent(article.name)}`;
+    window.open(url, "_blank", "noopener,noreferrer,width=600,height=500");
+  };
+
+  const textToRead = useMemo(() => {
+    if (!article?.content?.blocks) return "";
+    return article.content.blocks
+      .map((block) => {
+        const data = block.data;
+        if (block.type === "list") {
+          return (data as EditorJSListData).items.map((item) => item.content.replace(/<[^>]+>/g, "")).join(". ") ?? "";
+        }
+        if (block.type === "paragraph") {
+          return (data as EditorJSParagraphData).text.replace(/<[^>]+>/g, "") ?? "";
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join(". ");
+  }, [article?.content]);
+
+  const speak = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!textToRead?.trim()) return;
+    if (speechSynthesis.speaking) speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(textToRead);
+    utter.lang = "vi-VN";
+    utter.rate = 1;
+    utter.onend = () => {
+      setIsReading(false);
+      setIsPaused(false);
+    };
+    utteranceRef.current = utter;
+    speechSynthesis.speak(utter);
+    setIsReading(true);
+    setIsPaused(false);
+  }, [textToRead]);
+
+  const pause = () => {
+    if (typeof window === "undefined") return;
+    if (speechSynthesis.speaking && !speechSynthesis.paused) {
+      speechSynthesis.pause();
+      setIsPaused(true);
+    }
+  };
+
+  const resume = () => {
+    if (typeof window === "undefined") return;
+    if (speechSynthesis.paused) {
+      speechSynthesis.resume();
+      setIsPaused(false);
+    }
+  };
+
+  const stop = () => {
+    if (typeof window === "undefined") return;
+    speechSynthesis.cancel();
+    setIsReading(false);
+    setIsPaused(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={shareFacebook} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+          <FontAwesomeIcon icon={faFacebook} /> Chia sẻ
+        </button>
+        <button onClick={shareX} className="inline-flex items-center gap-2 rounded-lg bg-black px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:opacity-90">
+          <FontAwesomeIcon icon={faTwitter} /> Đăng lên X
+        </button>
+        <div className="mx-2 h-6 w-px bg-gray-200" />
+        {!isReading ? (
+          <button onClick={speak} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
+            <FontAwesomeIcon icon={faVolumeUp} /> Đọc bài
+          </button>
+        ) : (
+          <div className="inline-flex items-center gap-2">
+            {isPaused ? (
+              <button onClick={resume} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
+                <FontAwesomeIcon icon={faPlayCircle} /> Tiếp tục
+              </button>
+            ) : (
+              <button onClick={pause} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
+                <FontAwesomeIcon icon={faPause} /> Tạm dừng
+              </button>
+            )}
+            <button onClick={stop} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              <FontAwesomeIcon icon={faStop} /> Dừng
+            </button>
+          </div>
+        )}
+        <div className="mx-2 h-6 w-px bg-gray-200" />
+        <button onClick={handleBookmark} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
+          {bookmarked ? <FontAwesomeIcon icon={faCheck} /> : <FontAwesomeIcon icon={faBookmark} />} {bookmarked ? "Đã lưu" : "Lưu"}
+        </button>
+        <button onClick={handleFavorite} className="inline-flex items-center gap-2 rounded-lg border border-pink-200 px-3 py-1.5 text-sm font-semibold text-pink-700 hover:bg-pink-50">
+          {favorited ? <FontAwesomeIcon icon={faCheck} /> : <FontAwesomeIcon icon={faHeart} />} {favorited ? "Đã thích" : "Yêu thích"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default ArticleActions;

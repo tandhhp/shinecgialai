@@ -1,0 +1,205 @@
+/* eslint-disable @next/next/no-img-element */
+import PageContainer from "@/components/layout/page-container";
+import { apiArticleDetail, apiArticleMeta, apiArticleRandoms } from "@/services/article";
+import { Metadata } from "next";
+import Link from "next/link";
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import ArticleActions from "@/components/article/actions";
+import dayjs from "dayjs";
+import { JSX } from "react/jsx-dev-runtime";
+import { EditorJSBlock, EditorJSCodeData, EditorJSHeaderData, EditorJSImageData, EditorJSListData, EditorJSParagraphData, EditorJSQuoteData } from "@/typings/editorjs";
+import { faCalendar, faEye } from "@fortawesome/free-solid-svg-icons";
+
+type Params = Promise<{
+    id: string;
+}>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+    const { id } = await params;
+    try {
+        const res = await apiArticleMeta(id);
+        const article = res.data.data;
+        if (!article) return {};
+        return {
+            title: `${article.title} - ${process.env.NEXT_PUBLIC_SITE_NAME}`,
+            description: article.description,
+            openGraph: {
+                title: article.title,
+                description: article.description,
+                images: article.images
+            },
+        };
+    }
+    catch (error) {
+        return {};
+    }
+}
+
+const Page = async ({ params }: { params: Params }) => {
+    const { id } = await params;
+    const res = await apiArticleDetail(id);
+    const article = res.data.data;
+
+    const randomsRes = await apiArticleRandoms();
+    const randomArticles = randomsRes.data || [];
+
+    const breadcrumbs = [
+        { label: "Bài viết", href: "/article" },
+        { label: article?.name || "Chi tiết", href: "#" },
+    ];
+
+    if (!article) {
+        return (
+            <PageContainer breadcrumbs={[{ label: "Article", href: "/article" }]}>
+                <div className="text-center py-12">
+                    <p className="text-gray-600">Không tìm thấy bài viết.</p>
+                </div>
+            </PageContainer>
+        );
+    }
+
+    return (
+        <PageContainer breadcrumbs={breadcrumbs}>
+            <div className="md:flex gap-4">
+                <div className="flex-1 mb-4">
+                    <div className="bg-white/70 backdrop-blur p-6 rounded-xl flex gap-4 flex-col md:flex-row">
+                        <div>
+                            {article.thumbnail && (
+                                <div className="relative rounded-lg overflow-hidden bg-gray-100">
+                                    <img
+                                        src={article.thumbnail}
+                                        alt={article.name}
+                                        className="w-full md:w-40 h-40 object-cover"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-1">
+                            <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">{article.name}</h1>
+                            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+                                    <FontAwesomeIcon icon={faEye} className="text-gray-500" /> {article.viewCount?.toLocaleString() ?? 0} lượt xem
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+                                    Cập nhật {article.modifiedDate ? new Date(article.modifiedDate).toLocaleDateString("vi-VN") : "Chưa cập nhật"}
+                                </span>
+                            </div>
+                            <div className="mt-4">
+                                <ArticleActions article={article} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="prose prose-lg max-w-none bg-white rounded-lg p-4">
+                        {
+                            article.content?.blocks?.map((block: EditorJSBlock, index: number) => {
+                                switch (block.type) {
+                                    case 'paragraph': {
+                                        const data = block.data as EditorJSParagraphData;
+                                        return <p key={index} dangerouslySetInnerHTML={{ __html: data.text }} className="mb-1" />;
+                                    }
+                                    case 'header': {
+                                        const data = block.data as EditorJSHeaderData;
+                                        const HeaderTag = `h${data.level}` as keyof JSX.IntrinsicElements;
+                                        return <HeaderTag key={index} dangerouslySetInnerHTML={{ __html: data.text }} className="font-bold text-xl mt-4 mb-2" />;
+                                    }
+                                    case 'list': {
+                                        const data = block.data as EditorJSListData;
+                                        if (data.style === 'ordered') {
+                                            return (
+                                                <ol key={index} className="list-decimal list-inside">
+                                                    {data.items.map((item, itemIndex: number) => (
+                                                        <li key={itemIndex} dangerouslySetInnerHTML={{ __html: item.content }} />
+                                                    ))}
+                                                </ol>);
+                                        } else {
+                                            return (
+                                                <ul key={index} className="list-disc list-inside">
+                                                    {data.items.map((item, itemIndex: number) => (
+                                                        <li key={itemIndex} dangerouslySetInnerHTML={{ __html: item.content }} />
+                                                    ))}
+                                                </ul>);
+                                        }
+                                    }
+                                    case 'image': {
+                                        const data = block.data as EditorJSImageData;
+                                        return (
+                                            <div key={index} className="my-4">
+                                                <img src={data.file?.url} alt={data.caption || 'Image'} className="max-w-full h-auto" />
+                                                {data.caption && <p className="text-sm text-gray-500 mt-2">{data.caption}</p>}
+                                            </div>
+                                        );
+                                    }
+                                    case 'quote': {
+                                        const data = block.data as EditorJSQuoteData;
+                                        return (
+                                            <blockquote key={index} className="border-l-4 border-gray-300 pl-4 italic my-4">
+                                                <p dangerouslySetInnerHTML={{ __html: data.text }} />
+                                                {data.caption && <cite className="block text-sm text-gray-500 mt-2">{data.caption}</cite>}
+                                            </blockquote>
+                                        );
+                                    }
+                                    case 'code': {
+                                        const data = block.data as EditorJSCodeData;
+                                        return (
+                                            <pre key={index} className="bg-gray-100 p-4 rounded my-4 overflow-x-auto">
+                                                <code dangerouslySetInnerHTML={{ __html: data.code }} />
+                                            </pre>
+                                        );
+                                    }
+                                    case 'delimiter':
+                                        return <hr key={index} className="my-4" />;
+                                    default:
+                                        return null;
+                                }
+                            })
+                        }
+                    </div>
+
+                </div>
+
+                <aside className="md:w-1/3 mb-4">
+                    <div>
+                        <h2 className="text-xl font-bold mb-4">Bài viết ngẫu nhiên</h2>
+                        {randomArticles.data.length === 0 ? (
+                            <p className="text-sm text-gray-500">Chưa có bài viết.</p>
+                        ) : (
+                            <div className="space-y-4">
+                                {randomArticles.data.map((item) => {
+                                    const updatedAt = item.modifiedDate ? dayjs(item.modifiedDate).format("DD-MM-YYYY") : dayjs(item.createdDate).format("DD-MM-YYYY");
+                                    return (
+                                        <Link key={item.id} href={`/article/${item.normalizedName}`}>
+                                            <div className="group cursor-pointer flex gap-3 p-2 rounded-lg bg-white mb-1">
+                                                <div className="relative flex-shrink-0 w-24 h-24 overflow-hidden rounded-md bg-gray-200">
+                                                    {item.thumbnail ? (
+                                                        <img
+                                                            src={item.thumbnail}
+                                                            alt={item.name}
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex h-full w-full items-center justify-center text-2xl">📰</div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-1 line-clamp-2">
+                                                        {item.name}
+                                                    </h3>
+                                                    <div className="text-slate-500 text-xs md:text-sm line-clamp-2">{item.description}</div>
+                                                    <span className="text-xs text-gray-500 mr-2"><FontAwesomeIcon icon={faCalendar} /> {updatedAt}</span>
+                                                    <span className="text-xs text-gray-500 mt-1"><FontAwesomeIcon icon={faEye} /> {item.viewCount?.toLocaleString() ?? 0}</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </aside>
+            </div>
+        </PageContainer>
+    );
+};
+
+export default Page;
