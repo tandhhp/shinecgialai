@@ -15,6 +15,7 @@ export type EditorJSImageData = {
     withBorder?: boolean;
     withBackground?: boolean;
     stretched?: boolean;
+    align?: 'left' | 'center' | 'right';
     file?: {
         url: string;
     };

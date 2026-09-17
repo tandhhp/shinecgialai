@@ -1,6 +1,7 @@
-import Block from "../block"
+import { EditorJSType } from "@/typings/editorjs";
+import Block from "./block";
 
-const BlockRender: React.FC<API.BlockEditor> = (props) => {
+const BlockRender: React.FC<EditorJSType> = (props) => {
 
     const { blocks } = props;
     if (!blocks || blocks.length === 0) {
